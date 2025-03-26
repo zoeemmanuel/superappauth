@@ -1,0 +1,1 @@
+/opt/superapp-poc1/app/assets/builds/application.js

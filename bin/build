@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# Build JavaScript
+yarn build
+
+# Build CSS
+yarn build:css
+
+# Clear old assets
+rm -rf public/assets
+
+# Precompile assets
+RAILS_ENV=production bundle exec rails assets:precompile

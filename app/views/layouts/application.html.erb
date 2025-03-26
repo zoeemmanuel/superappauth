@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html class="h-full bg-gray-900">
+<head>
+<% if @current_auth_version.present? %>
+  <script>
+    // Version check - runs immediately before anything else loads
+    (function() {
+      var storedVersion = localStorage.getItem('auth_version');
+      var serverVersion = '<%= @current_auth_version %>';
+      
+      console.log('Auth version check - Stored:', storedVersion, 'Server:', serverVersion);
+      
+      // Check for new device with no version yet
+      if (!storedVersion) {
+        // New device - store current version instead of redirecting
+        console.log('New device detected - storing current auth version');
+        localStorage.setItem('auth_version', serverVersion);
+        return; // Skip the redirect
+      }
+      
+      // Only redirect if version is significantly older (>60 sec)
+      if (parseInt(storedVersion) + 60 < parseInt(serverVersion)) {
+        console.log('Authentication is significantly outdated - clearing and redirecting');
+        
+        // Clear all storage
+        try {
+          // Remove specific items first
+          localStorage.removeItem('authenticated_user');
+          localStorage.removeItem('device_key');
+          localStorage.removeItem('device_header');
+          localStorage.removeItem('superapp_tab_id');
+          localStorage.removeItem('loop_detected');
+          
+          // Clear everything
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch(e) {
+          console.error('Error clearing storage:', e);
+        }
+        
+        // Redirect to login
+        window.location.href = '/?auth_expired=true';
+      }
+    })();
+  </script>
+
+<!-- Add QR code library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<% end %>
+    <title>SuperApp - Auth</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+    <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
+    <script>
+      window.csrfToken = '<%= form_authenticity_token %>';
+      window.appConfig = {
+        protocol: '<%= request.protocol %>',
+        host: '<%= request.host %>',
+        baseUrl: '<%= request.base_url %>',
+        currentPath: '<%= request.path %>'
+      };
+    </script>
+    
+    <!-- Direct button fix for Account Exists screen -->
+    <script>
+      // This script runs immediately, outside of React
+      document.addEventListener('DOMContentLoaded', function() {
+        // Check for button handlers every 100ms
+        const buttonInterval = setInterval(function() {
+          const accountExistsHeader = document.querySelector('h1');
+          if (accountExistsHeader && accountExistsHeader.textContent.includes('Account Already Exists')) {
+            console.log("FOUND ACCOUNT EXISTS SCREEN - APPLYING DIRECT FIX");
+            
+            const yesButton = document.querySelector('#yes-account-btn');
+            const noButton = document.querySelector('#no-account-btn');
+            
+            if (yesButton) {
+              console.log("Attaching direct handler to YES button");
+              
+              // Clone and replace to remove all existing event handlers
+              const newYesButton = yesButton.cloneNode(true);
+              yesButton.parentNode.replaceChild(newYesButton, yesButton);
+              
+              newYesButton.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("YES BUTTON CLICKED - OVERRIDE HANDLER");
+                
+                // Show loading state
+                newYesButton.innerHTML = '<div style="display:flex;align-items:center;justify-content:center"><div style="width:20px;height:20px;border-radius:50%;border:2px solid #fff;border-top-color:transparent;animation:spin 1s linear infinite;margin-right:8px"></div>Processing...</div>';
+                newYesButton.disabled = true;
+                
+                // Get info from the page
+                let identifier = '';
+                const paragraphText = document.querySelector('.text-center p')?.textContent || '';
+                const handleMatch = paragraphText.match(/@[\w]+/);
+                
+                if (handleMatch) {
+                  identifier = handleMatch[0];
+                } else {
+                  identifier = sessionStorage.getItem('current_handle') || '';
+                }
+                
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                
+                // Direct API call
+                fetch('/api/v1/verify_login', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken || window.csrfToken,
+                    'Accept': 'application/json',
+                    'X-Device-Key': sessionStorage.getItem('device_key') || ''
+                  },
+                  body: JSON.stringify({
+                    identifier: identifier,
+                    device_registration: true,
+                    auth: { 
+                      identifier: identifier,
+                      device_registration: true 
+                    }
+                  })
+                })
+                .then(response => response.json())
+                .then(data => {
+                  console.log("Registration response:", data);
+                  if (data.status === 'verification_needed') {
+                    window.location.reload();
+                  } else {
+                    alert("Error processing request: " + (data.message || "Unknown error"));
+                    newYesButton.innerHTML = "Yes, this is my account";
+                    newYesButton.disabled = false;
+                  }
+                })
+                .catch(err => {
+                  console.error("Error:", err);
+                  alert("Network error. Please try again.");
+                  newYesButton.innerHTML = "Yes, this is my account";
+                  newYesButton.disabled = false;
+                });
+                
+                return false;
+              };
+            }
+            
+            if (noButton) {
+              console.log("Attaching direct handler to NO button");
+              
+              // Clone and replace
+              const newNoButton = noButton.cloneNode(true);
+              noButton.parentNode.replaceChild(newNoButton, noButton);
+              
+              newNoButton.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("NO BUTTON CLICKED - OVERRIDE HANDLER");
+                window.location.href = '/';
+                return false;
+              };
+            }
+            
+            // Stop checking once we've attached handlers
+            clearInterval(buttonInterval);
+          }
+        }, 100);
+        
+        // Stop checking after 10 seconds
+        setTimeout(function() {
+          clearInterval(buttonInterval);
+        }, 10000);
+      });
+      
+      // Define spin animation
+      document.head.insertAdjacentHTML('beforeend', 
+        '<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>'
+      );
+    </script>
+  <body class="h-full">
+    <main class="min-h-screen">
+      <%= yield %>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html class="h-full bg-gray-900">
+  <head>
+    <title>SuperApp - Auth</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+<link rel="stylesheet" href="/assets/application.css" data-turbo-track="reload">
+<script src="/assets/application.js" data-turbo-track="reload" defer></script>
+    <script>
+      window.csrfToken = '<%= form_authenticity_token %>';
+    </script>
+  </head>
+  <body class="h-full">
+    <main class="min-h-screen">
+      <%= yield %>
+    </main>
+  </body>
+</html>

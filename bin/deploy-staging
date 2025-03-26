@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Check if we're already in a screen session
+if [ -z "$STY" ]; then
+    echo "Starting deployment in a screen session..."
+    echo "To detach: press Ctrl+A, then D"
+    echo "To reattach later: screen -r superapp-deploy"
+    sleep 2
+    exec screen -S superapp-deploy "$0" "$@"
+    exit 0
+fi
+
+# Generate new version based on timestamp
+VERSION=$(date +%Y%m%d%H%M)
+echo "export const APP_VERSION = '$VERSION';" > app/javascript/utils/app_version.js
+echo "Updating to version $VERSION"
+
+# Optional: Clear existing databases if needed for testing
+# rm -rf db/devices/*.sqlite3
+# rails runner "User.delete_all"
+
+# Precompile assets
+echo "Compiling assets..."
+bin/rails assets:precompile
+
+# Restart server
+echo "Restarting server..."
+pkill -f puma
+RAILS_ENV=staging bundle exec puma -C config/puma.rb
+
+echo "Deployment complete! Version $VERSION is now live."

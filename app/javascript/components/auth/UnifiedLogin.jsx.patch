@@ -1,0 +1,137 @@
+// Replace the entire renderDeviceRegistration function with this version
+// Find the existing one and replace it completely
+
+  // FIXED Render device registration confirmation
+  const renderDeviceRegistration = () => {
+    // Directly register click handlers after render using setTimeout
+    setTimeout(() => {
+      console.log("Setting up direct DOM handlers for device registration buttons");
+      
+      const yesButton = document.getElementById('yes-account-btn');
+      const noButton = document.getElementById('no-account-btn');
+      
+      if (yesButton) {
+        console.log("Found YES button - setting up direct handler");
+        yesButton.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log("YES button clicked via direct handler");
+          
+          // Show loading state manually
+          yesButton.innerHTML = '<div class="flex items-center justify-center"><div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>Processing...</div>';
+          yesButton.disabled = true;
+          
+          // Get CSRF token directly from meta tag
+          const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || window.csrfToken;
+          const deviceKey = sessionStorage.getItem('device_key');
+          
+          // Get the identifier from our component state or from the UI
+          const userIdentifier = loginMethod === 'handle' ? identifier : phone;
+          
+          // Make request directly without using React state
+          fetch('/api/v1/verify_login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+              'Accept': 'application/json',
+              'X-Device-Key': deviceKey || ''
+            },
+            body: JSON.stringify({
+              identifier: userIdentifier,
+              device_registration: true,
+              auth: { 
+                identifier: userIdentifier,
+                device_registration: true 
+              }
+            })
+          })
+          .then(response => response.json())
+          .then(data => {
+            console.log("Registration response:", data);
+            if (data.status === 'verification_needed') {
+              // Success - redirect to refresh the page with verification UI
+              window.location.reload();
+            } else {
+              // Error case
+              alert("Error processing request: " + (data.message || "Unknown error"));
+              yesButton.innerHTML = "Yes, this is my account";
+              yesButton.disabled = false;
+            }
+          })
+          .catch(error => {
+            console.error("Error:", error);
+            alert("Network error. Please try again.");
+            yesButton.innerHTML = "Yes, this is my account";
+            yesButton.disabled = false;
+          });
+        });
+      }
+      
+      if (noButton) {
+        console.log("Found NO button - setting up direct handler");
+        noButton.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log("NO button clicked via direct handler");
+          window.location.href = '/';
+        });
+      }
+    }, 500); // Short delay to ensure DOM is rendered
+    
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-6">
+          <div className="mb-8 flex justify-center">
+            <div className="w-16 h-16 rounded-full bg-teal-500 flex items-center justify-center text-xl font-bold">
+              {existingUserData?.handle ? existingUserData.handle[0].toUpperCase() : (identifier.startsWith('@') ? identifier[1].toUpperCase() : 'S')}
+            </div>
+          </div>
+          
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-2">Account Already Exists</h1>
+            <p className="text-gray-400 mb-6">
+              {loginMethod === 'handle' ? (
+                `The handle ${identifier} is already registered.`
+              ) : (
+                `This phone number is already registered${existingUserData?.handle ? ` with the handle ${existingUserData.handle}` : ''}.`
+              )}
+              <br />
+              Would you like to add this device to your account?
+              <br />
+              <span className="text-teal-400 mt-2 inline-block">
+                We'll send a verification code to confirm this is your account
+              </span>
+            </p>
+          </div>
+          
+          <div className="space-y-4">
+            <button
+              type="button"
+              id="yes-account-btn"
+              className="w-full bg-teal-500 text-white rounded-lg py-4 font-medium hover:bg-teal-600 transition-colors"
+            >
+              Yes, this is my account
+            </button>
+            
+            <button
+              type="button"
+              id="no-account-btn" 
+              className="w-full bg-gray-800 text-white rounded-lg py-4 font-medium hover:bg-gray-700 transition-colors"
+            >
+              This isn't my account
+            </button>
+          </div>
+          
+          {error && (
+            <div className="text-red-500 text-center flex items-center justify-center">
+              <span>{error}</span>
+              <button onClick={() => setError('')} className="ml-2">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };

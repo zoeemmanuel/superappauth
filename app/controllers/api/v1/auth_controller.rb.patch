@@ -1,0 +1,35 @@
+# Add this at the VERY top of the check_device method, right after the first debug line
+
+logger.debug "========== CHECK DEVICE START =========="
+logger.debug "Current session: #{session.to_h}"
+
+# SECURITY FIX: Aggressively check for and enforce device registration flow
+if request.referrer&.include?('account_exists') || 
+   request.path.include?('account_exists') ||
+   request.original_fullpath.include?('account_exists') ||
+   params[:device_registration].present? ||
+   params.dig(:auth, :device_registration).present? ||
+   session[:device_registration_flow].present?
+  
+  # Set flag and log it
+  session[:device_registration_flow] = true
+  logger.debug "SECURITY: Device registration flow detected - requiring verification"
+  
+  # If we have enough info to force verification, do it immediately
+  if session[:current_handle].present? && session[:verification_phone].present?
+    logger.debug "SECURITY: Found session data, forcing verification: #{session[:current_handle]}"
+    
+    # Send verification code
+    send_verification(session[:verification_phone])
+    
+    # Return verification required response
+    return render json: {
+      status: 'needs_quick_verification',
+      handle: session[:current_handle],
+      masked_phone: mask_phone(session[:verification_phone]),
+      message: "Security verification required for #{session[:current_handle]}"
+    }
+  end
+end
+
+# Continue with regular check_device logic...

@@ -1,0 +1,334 @@
+<div class="min-h-screen bg-gray-900 text-white">
+  <div class="container mx-auto px-4 py-8">
+    <!-- Header Section -->
+    <div class="flex items-center justify-between mb-8">
+      <h1 class="text-2xl font-bold">Welcome to SuperApp</h1>
+      <div class="flex items-center space-x-4">
+        <span class="text-teal-500">Device Authenticated</span>
+        <button onclick="handleLogout()" 
+                class="bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors">
+          Logout
+        </button>
+      </div>
+    </div>
+    
+    <!-- Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Device Info Card -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4">Device Information</h2>
+        <div class="space-y-2">
+          <div class="text-gray-400">
+            Device ID: 
+            <div class="text-white font-mono text-sm break-all mt-1" data-device-id>
+              <%= @device_info[:device_id][0..15] %>...
+            </div>
+          </div>
+          <p class="text-gray-400">
+            Last Verified: 
+            <span class="text-white">
+              <%= Time.current.strftime("%B %d, %Y") %>
+            </span>
+          </p>
+        </div>
+      </div>
+      
+      <!-- User Info Card -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4">Account Details</h2>
+        <div id="accountDetails" class="space-y-4">
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-400">Handle:</span>
+              <span class="text-white font-mono" data-handle><%= @device_info[:handle] %></span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-400">Phone:</span>
+              <span class="text-white font-mono"><%= User.mask_phone(@device_info[:phone]) %></span>
+            </div>
+          </div>
+
+          <button onclick="toggleUpdateHandle()" 
+                  class="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors">
+            Update Handle
+          </button>
+
+          <!-- Update Handle Form -->
+          <div id="updateHandleForm" class="hidden space-y-3">
+            <div class="relative">
+              <input type="text" id="newHandle" 
+                     class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white pl-8"
+                     placeholder="username"
+                     pattern="[a-zA-Z0-9]+"
+                     title="Handle must contain only letters and numbers">
+              <span class="absolute left-3 top-2 text-gray-400">@</span>
+            </div>
+            <div class="flex space-x-2">
+              <button onclick="updateHandle()" 
+                      class="flex-1 bg-teal-500 hover:bg-teal-600 text-white py-2 px-4 rounded transition-colors">
+                Save
+              </button>
+              <button onclick="toggleUpdateHandle()" 
+                      class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors">
+                Cancel
+              </button>
+            </div>
+            <div id="handleError" class="text-red-500 text-sm hidden"></div>
+            <div id="handleSuccess" class="text-green-500 text-sm hidden"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Actions Card -->
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4">Quick Actions</h2>
+        <div class="space-y-3">
+          <!-- Add Reset This Device button -->
+          <button onclick="handleResetThisDevice()"
+                  class="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded transition-colors">
+            Reset This Device
+          </button>
+          
+          <button onclick="handleResetDevices()"
+                  class="w-full bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded transition-colors">
+            Reset All Devices
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize device key for all requests
+  const deviceKey = sessionStorage.getItem('device_key');
+  if (!deviceKey) {
+    console.warn('No device key found in session');
+    window.location.href = `${getBaseUrl()}/`;
+    return;
+  }
+});
+
+function getBaseUrl() {
+  return window.location.origin;
+}
+
+function getHeaders() {
+  const deviceKey = sessionStorage.getItem('device_key');
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'X-Device-Key': deviceKey,
+    'X-Forwarded-Proto': window.location.protocol.replace(':', '')
+  };
+  
+  if (csrfToken) {
+    headers['X-CSRF-Token'] = csrfToken;
+  }
+  
+  return headers;
+}
+
+async function handleLogout() {
+  console.log('Initiating logout...');
+  try {
+    // Mark logout in progress first
+    sessionStorage.setItem('logging_out', 'true');
+    
+    console.log('Sending logout request...');
+    const response = await fetch(`${getBaseUrl()}/logout`, {
+      method: 'POST', // Changed to POST to match our routes
+      headers: {
+        ...getHeaders(),
+        'Cache-Control': 'no-cache, no-store'
+      },
+      credentials: 'same-origin'
+    });
+
+    if (!response.ok) {
+      console.error('Logout response not OK:', response.status);
+      throw new Error('Logout failed');
+    }
+
+    const data = await response.json();
+    console.log('Logout successful, redirecting to:', data.redirect_to);
+
+    // Clear storage after successful response
+    console.log('Clearing client storage...');
+    sessionStorage.removeItem('device_key');
+    localStorage.clear();
+    
+    // Stop any pending requests
+    window.stop();
+
+    // Final redirect
+    window.location.href = data.redirect_to;
+  } catch (error) {
+    console.error('Logout failed:', error);
+    // Even if logout fails, clear storage and redirect
+    sessionStorage.clear();
+    localStorage.clear();
+    window.location.href = '/';
+  }
+}
+
+async function handleResetDevices() {
+  if (!confirm("This will remove all your devices. You'll need to register again. Continue?")) {
+    return;
+  }
+
+  try {
+    // Set a flag to prevent automatic redirection attempts during reset
+    localStorage.setItem('resetting_devices', 'true');
+    console.log('Starting device reset...');
+    
+    // Make the reset request
+    const response = await fetch(`${getBaseUrl()}/reset_devices`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+      credentials: 'same-origin'
+    });
+
+    // Clear ALL client-side storage regardless of response
+    console.log('Clearing all storage...');
+    sessionStorage.clear();
+    localStorage.clear();
+    
+    // Explicitly remove specific items to ensure they're gone
+    localStorage.removeItem('authenticated_user');
+    localStorage.removeItem('superapp_tab_id');
+    localStorage.removeItem('loop_detected');
+    sessionStorage.removeItem('device_key');
+    sessionStorage.removeItem('current_handle');
+    sessionStorage.removeItem('device_session');
+    sessionStorage.removeItem('redirect_count');
+    
+    // Clean any third-party cookies or storage
+    document.cookie.split(";").forEach(function(c) {
+      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+    });
+    
+    // Redirect with a delay to ensure storage is cleared first
+    console.log('Redirecting after reset...');
+    setTimeout(() => {
+      // Add cache-busting parameter
+      window.location.href = `${getBaseUrl()}/?reset=${Date.now()}`;
+    }, 500);
+    
+  } catch (error) {
+    console.error('Reset devices failed:', error);
+    
+    // Even on error, clear storage and redirect
+    sessionStorage.clear();
+    localStorage.clear();
+    localStorage.removeItem('authenticated_user');
+    sessionStorage.removeItem('device_key');
+    
+    setTimeout(() => {
+      window.location.href = `${getBaseUrl()}/?reset_error=true`;
+    }, 500);
+  }
+}
+
+// Add the Reset This Device function
+async function handleResetThisDevice() {
+  if (!confirm("This will remove only this device from your account. You'll need to verify again to use this device. Continue?")) {
+    return;
+  }
+
+  try {
+    console.log('Resetting current device...');
+    
+    // Make the reset device request
+    const response = await fetch(`${getBaseUrl()}/reset_device`, {
+      method: 'POST',
+      headers: getHeaders(),
+      credentials: 'same-origin'
+    });
+
+    // Clear session storage
+    console.log('Clearing device session...');
+    sessionStorage.clear();
+    localStorage.removeItem('authenticated_user');
+    sessionStorage.removeItem('device_key');
+    sessionStorage.removeItem('device_session');
+    
+    // Redirect with a delay to ensure storage is cleared first
+    console.log('Redirecting after device reset...');
+    setTimeout(() => {
+      window.location.href = `${getBaseUrl()}/?reset=${Date.now()}`;
+    }, 500);
+    
+  } catch (error) {
+    console.error('Reset device failed:', error);
+    
+    // Even on error, clear storage and redirect
+    sessionStorage.clear();
+    sessionStorage.removeItem('device_key');
+    
+    setTimeout(() => {
+      window.location.href = `${getBaseUrl()}/?reset_error=true`;
+    }, 500);
+  }
+}
+
+function toggleUpdateHandle() {
+  const form = document.getElementById('updateHandleForm');
+  const error = document.getElementById('handleError');
+  const success = document.getElementById('handleSuccess');
+  form.classList.toggle('hidden');
+  error.classList.add('hidden');
+  success.classList.add('hidden');
+  document.getElementById('newHandle').value = '';
+}
+
+async function updateHandle() {
+  const newHandle = document.getElementById('newHandle').value.trim();
+  const error = document.getElementById('handleError');
+  const success = document.getElementById('handleSuccess');
+  
+  error.classList.add('hidden');
+  success.classList.add('hidden');
+  
+  if (!newHandle) {
+    error.textContent = 'Handle cannot be empty';
+    error.classList.remove('hidden');
+    return;
+  }
+
+  const handleToSubmit = newHandle.startsWith('@') ? newHandle : `@${newHandle}`;
+
+  try {
+    const response = await fetch(`${getBaseUrl()}/update_handle`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ handle: handleToSubmit }),
+      credentials: 'same-origin'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      error.textContent = data.error || 'Failed to update handle';
+      error.classList.remove('hidden');
+      return;
+    }
+
+    // Update the UI
+    document.querySelector('[data-handle]').textContent = handleToSubmit;
+    success.textContent = 'Handle updated successfully';
+    success.classList.remove('hidden');
+
+    // Hide the form after a delay
+    setTimeout(() => {
+      toggleUpdateHandle();
+    }, 2000);
+  } catch (err) {
+    console.error('Update handle error:', err);
+    error.textContent = 'Network error occurred';
+    error.classList.remove('hidden');
+  }
+}
+</script>

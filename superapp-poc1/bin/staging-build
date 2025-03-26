@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+yarn install
+yarn build
+yarn build:css
+bin/rails assets:precompile RAILS_ENV=staging
